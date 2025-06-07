@@ -3,6 +3,8 @@ import { config } from '../config/index.js'
 import { generateResponse } from '../ai/openai.js'
 import { createLogger } from '../logger/index.js'
 import { supabase } from '../db/client.js'
+import { extraerComentarioYPuntaje } from '../ai/feedbackParser.js'
+
 
 const logger = createLogger('MessageHandler')
 
@@ -33,12 +35,15 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
 
         const textContent =
             message.message?.conversation || message.message?.extendedTextMessage?.text || ''
-
         if (!textContent) return
+
+        const { comment, rating } = extraerComentarioYPuntaje(textContent.trim())
 
         logger.info('Message received', {
             from: remoteJid,
             text: textContent,
+            comment,
+            rating,
             messageId: message.key.id
         })
 
@@ -73,13 +78,25 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
             const prompt = textContent.trim()
 
             const customPrompt = `
-El cliente acaba de recibir su pedido y respondió lo siguiente:
 
-"${prompt}"
+            Sos parte del equipo de atención al cliente de un pequeño emprendimiento. 
+            Tu trabajo es responder de forma cálida, cercana y humana a los mensajes que dejan los clientes después de recibir su pedido.
 
-Redactá una respuesta amable, cercana y empática, como si fueras parte de un pequeño negocio que se alegra mucho de que todo haya salido bien.
-No uses emojis a menos que el cliente los haya usado.
-Respondé en menos de 3 líneas.
+            No hablás como un robot. No uses frases genéricas como “gracias por tu mensaje”. 
+            Mostrá gratitud real, validá lo que dicen y conversá con tono relajado, como si estuvieras en WhatsApp. 
+
+            Siempre que el cliente dé una opinión (positiva o negativa), pedile amablemente que la califique del 1 al 5. 
+            Si ya lo hizo, registralo mentalmente y agradecé.
+            Si no lo hizo, insistí una vez más de forma sutil pero clara, como: "¿Y si tuvieras que ponerle un puntaje del 1 al 5? 😄"
+
+            Usá emojis solo si el cliente los usó primero.
+
+            Tu estilo:
+            - Cercano y honesto, como si fueras parte real del equipo.
+            - Breve, cálido, directo.
+            - Nunca des respuestas genéricas ni largas.
+
+            mensaje del cliente: "${prompt}"
             `
 
             try {
@@ -88,17 +105,24 @@ Respondé en menos de 3 líneas.
 
                 logger.info('AI response sent', {
                     to: remoteJid,
-                    response: aiReply
+                    response: aiReply, comment, rating,
+
+                     comentarioDetectado: comment,
+                     puntuacionDetectada: rating,
                 })
+
+
             } catch (error) {
                 logger.error('Error generating AI response', error)
                 await sock.sendMessage(remoteJid, {
                     text: 'Hubo un error al generar la respuesta automática. Podés responder manualmente por ahora.'
                 })
             }
-
+              
+              
             return
         }
+
 
     } catch (error) {
         logger.error('Error handling message', error, {
