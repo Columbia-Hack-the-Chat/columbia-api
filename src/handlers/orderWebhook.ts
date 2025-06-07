@@ -16,12 +16,10 @@ interface OrderData {
     name: string;
     phone: string;
   };
-  lineItems: Array<{
-    sku: string;
-    quantity: number;
-  }>;
+  product: string[];
   total: number;
   createdAt: string;
+  reviewStatus: string;
 }
 
 // Utilidad para enviar mensajes por WhatsApp
@@ -97,11 +95,10 @@ router.post('/webhook/order', async (req, res) => {
         {
           order_id: parseInt(orderData.orderId),
           customer_id: customerId,
-          skus: orderData.lineItems.map(item => item.sku),
+          product: orderData.product,
           total: orderData.total,
           created_at: orderData.createdAt,
-          status: 'pendiente',        // nuevo campo
-          is_active: true             // nuevo campo
+          review_status: orderData.reviewStatus || 'pending'
         }
       ])
       .select()
@@ -112,8 +109,8 @@ router.post('/webhook/order', async (req, res) => {
       return res.status(500).json({ error: 'Error al procesar la orden' });
     }
 
-    // Validación antes de enviar el mensaje
-    if (savedOrder.status === 'pendiente' && savedOrder.is_active === true) {
+    // Enviar mensaje de WhatsApp si el review_status es pending
+    if (savedOrder.review_status === 'pending') {
       const message = `Hola ${orderData.customer.name}, entiendo que recibiste tu compra. Quería saber qué te pareció, dándonos un puntaje del 1 al 5 estrellas. Podés agregar comentarios para que sigamos mejorando.`;
 
       try {
@@ -122,7 +119,7 @@ router.post('/webhook/order', async (req, res) => {
         console.error('Error al enviar mensaje de WhatsApp:', whatsappError);
       }
     } else {
-      console.log(`No se envió mensaje: estado=${savedOrder.status}, activo=${savedOrder.is_active}`);
+      console.log(`No se envió mensaje: review_status=${savedOrder.review_status}`);
     }
 
     return res.status(200).json({

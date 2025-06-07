@@ -13,6 +13,23 @@ function esRespuestaAPostEntrega(message: WAMessage): boolean {
     return !!message.message?.conversation || !!message.message?.extendedTextMessage
 }
 
+// Función para procesar el mensaje y extraer rating y comentario
+function processReviewMessage(message: string): { rating: number | null; comment: string | null } {
+    // Buscar números del 1 al 5 al inicio del mensaje
+    const ratingMatch = message.match(/^[1-5]/);
+    const rating = ratingMatch ? parseInt(ratingMatch[0]) : null;
+    
+    // El comentario es el resto del mensaje, eliminando el rating si existe
+    const comment = ratingMatch 
+        ? message.slice(ratingMatch[0].length).trim() 
+        : message.trim();
+
+    return {
+        rating,
+        comment: comment || null
+    };
+}
+
 // Setup del handler de mensajes
 export function setupMessageHandler(sock: WASocket) {
     sock.ev.on('messages.upsert', async ({ messages, type }: BaileysEventMap['messages.upsert']) => {
@@ -37,13 +54,13 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
             message.message?.conversation || message.message?.extendedTextMessage?.text || ''
         if (!textContent) return
 
-  const { comment, rating } = await extraerComentarioYPuntajeConIA(textContent.trim());
+        const { comment, rating } = await extraerComentarioYPuntajeConIA(textContent.trim());
 
-  logger.info('Message analyzed by AI', {
-    originalText: textContent,
-    extractedComment: comment,
-    extractedRating: rating
-  });
+        logger.info('Message analyzed by AI', {
+            originalText: textContent,
+            extractedComment: comment,
+            extractedRating: rating
+        });
 
         // IA solo si es una respuesta post entrega
         if (config.bot.aiEnabled && esRespuestaAPostEntrega(message)) {
@@ -80,7 +97,7 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
             Sos parte del equipo de atención al cliente de un pequeño emprendimiento. 
             Tu trabajo es responder de forma cálida, cercana y humana a los mensajes que dejan los clientes después de recibir su pedido.
 
-            No hablás como un robot. No uses frases genéricas como “gracias por tu mensaje”. 
+            No hablás como un robot. No uses frases genéricas como "gracias por tu mensaje". 
             Mostrá gratitud real, validá lo que dicen y conversá con tono relajado, como si estuvieras en WhatsApp. 
 
             Siempre que el cliente dé una opinión (positiva o negativa), pedile amablemente que la califique del 1 al 5. 
@@ -104,11 +121,42 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
                 logger.info('AI response sent', {
                     to: remoteJid,
                     response: aiReply, comment, rating,
-
-                     comentarioDetectado: comment,
-                     puntuacionDetectada: rating,
+                    comentarioDetectado: comment,
+                    puntuacionDetectada: rating,
                 })
 
+                // Solo guardar si hay rating o comentario
+                if (rating || comment) {
+                    const { error: reviewError } = await supabase
+                        .from('reviews')
+                        .insert([
+                            {
+                                order_id: order.id,
+                                customer_id: customer.id,
+                                rating: rating || null,
+                                comment: comment || null,
+                                status: 'received',
+                                created_at: new Date().toISOString()
+                            }
+                        ]);
+
+                    if (reviewError) {
+                        logger.error('Error al guardar la review:', reviewError);
+                    } else {
+                        logger.info('Review guardada exitosamente', {
+                            orderId: order.id,
+                            customerId: customer.id,
+                            rating,
+                            hasComment: !!comment
+                        });
+
+                        // Actualizar el estado de la orden
+                        await supabase
+                            .from('orders')
+                            .update({ review_status: 'completed' })
+                            .eq('id', order.id);
+                    }
+                }
 
             } catch (error) {
                 logger.error('Error generating AI response', error)
@@ -116,8 +164,6 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
                     text: 'Hubo un error al generar la respuesta automática. Podés responder manualmente por ahora.'
                 })
             }
-              
-              
             return
         }
 

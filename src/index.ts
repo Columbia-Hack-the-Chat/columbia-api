@@ -3,6 +3,7 @@ import 'dotenv/config'
 import { Boom } from '@hapi/boom'
 import { DisconnectReason, BaileysEventMap, fetchLatestBaileysVersion } from 'baileys'
 import qrcode from 'qrcode-terminal'
+import cors from 'cors'
 
 import { config } from './config/index.js'
 import { createAuthenticatedSocket } from './socket/index.js'
@@ -89,6 +90,13 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Configuración de CORS
+app.use(cors({
+  origin: ['http://localhost:3005', 'http://localhost:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Middleware para parsear JSON
 app.use(express.json());

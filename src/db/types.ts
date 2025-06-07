@@ -27,6 +27,6 @@ export interface Review {
 }
 
 export interface ReviewWithRelations extends Review {
-  customer: Pick<Customer, 'name' | 'email'>;
-  order: Pick<Order, 'order_id' | 'total'>;
+  customer: Customer;
+  order: Order;
 } 

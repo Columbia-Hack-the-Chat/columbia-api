@@ -35,13 +35,21 @@ router.get('/reviews', async (req, res) => {
         comment,
         status,
         created_at,
-        customer:customers!inner (
+        customer:customers (
+          id,
           name,
-          email
+          email,
+          phone,
+          created_at
         ),
-        order:orders!inner (
+        order:orders (
+          id,
           order_id,
-          total
+          customer_id,
+          product,
+          total,
+          created_at,
+          review_status
         )
       `)
       .not('rating', 'is', null)
@@ -56,11 +64,47 @@ router.get('/reviews', async (req, res) => {
     }
 
     // Transformar la respuesta para asegurar el formato correcto
-    const formattedReviews = reviews.map(review => ({
-      ...review,
-      customer: review.customer[0],
-      order: review.order[0]
-    }));
+    const formattedReviews = reviews.map(review => {
+      // Validar que existan los datos del customer y order
+      if (!review.customer || !review.order) {
+        console.error('Datos incompletos para la review:', review.id);
+        return null;
+      }
+
+      const customer = Array.isArray(review.customer) ? review.customer[0] : review.customer;
+      const order = Array.isArray(review.order) ? review.order[0] : review.order;
+
+      if (!customer || !order) {
+        console.error('Datos de customer u order no encontrados para la review:', review.id);
+        return null;
+      }
+
+      return {
+        id: review.id,
+        order_id: review.order_id,
+        customer_id: review.customer_id,
+        rating: review.rating,
+        comment: review.comment,
+        status: review.status,
+        created_at: review.created_at,
+        customer: {
+          id: customer.id,
+          name: customer.name,
+          email: customer.email,
+          phone: customer.phone,
+          created_at: customer.created_at
+        },
+        order: {
+          id: order.id,
+          order_id: order.order_id,
+          customer_id: order.customer_id,
+          product: order.product,
+          total: order.total,
+          created_at: order.created_at,
+          review_status: order.review_status
+        }
+      };
+    }).filter(review => review !== null) as ReviewWithRelations[];
 
     // Calcular el NPS
     const ratings = formattedReviews
