@@ -1,21 +1,14 @@
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { getSocket } from '../socket/manager.js';
+import { supabase } from '../db/client.js';
+import { Customer, Order } from '../db/types.js';
 
 dotenv.config();
 
 const router = express.Router();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Faltan las variables de entorno de Supabase');
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
+// Interfaz para la estructura de la orden
 interface OrderData {
   orderId: string;
   customer: {
