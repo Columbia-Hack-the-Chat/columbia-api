@@ -66,7 +66,7 @@ export async function extraerComentarioYPuntajeConIA(text: string): Promise<{
 
 // Helper functions
 function isValidRating(rating: any): boolean {
-  return rating !== null && rating !== undefined && !isNaN(rating) && rating >= 1 && rating <= 5;
+  return rating !== null && rating !== undefined && !isNaN(rating) && rating >= 0 && rating <= 5;
 }
 
 function cleanComment(comment: string): string {
