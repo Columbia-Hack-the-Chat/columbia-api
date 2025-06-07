@@ -1,5 +1,5 @@
 // ai/feedbackParser.ts
-import { generateResponse } from './openai.js';
+import { generateJsonResponse } from './openai.js';
 import { config } from '../config/index.js';
 
 /**
@@ -21,7 +21,7 @@ export async function extraerComentarioYPuntajeConIA(text: string): Promise<{
   try {
     const systemPrompt = `
     Eres un analizador de feedback especializado. Tu única tarea es:
-    1. Identificar el puntaje REAL (1-5) que el cliente quiere dar
+    1. Identificar el puntaje REAL (0-5) que el cliente quiere dar
     2. Extraer el comentario principal
 
     Reglas estrictas:
@@ -36,9 +36,9 @@ export async function extraerComentarioYPuntajeConIA(text: string): Promise<{
     {"rating": null, "comment": "El servicio fue regular"}
     `;
 
-    const userPrompt = `Analiza: "${text}"`;
+    const userPrompt = `Analiza este texto y responde en formato JSON: "${text}"`;
 
-    const aiResponse = await generateResponse(userPrompt, systemPrompt);
+    const aiResponse = await generateJsonResponse(userPrompt, systemPrompt);
     
     // Limpieza básica de la respuesta
     const cleanResponse = aiResponse
