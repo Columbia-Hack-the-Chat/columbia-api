@@ -111,7 +111,7 @@ router.post('/webhook/order', async (req, res) => {
 
     // Enviar mensaje de WhatsApp si el review_status es pending
     if (savedOrder.review_status === 'pending') {
-      const message = `Hola ${orderData.customer.name}, entiendo que recibiste tu compra. Quería saber qué te pareció, dándonos un puntaje del 1 al 5 estrellas. Podés agregar comentarios para que sigamos mejorando.`;
+      const message = `¡Hola ${orderData.customer.name}! 😊 Esperamos que estés disfrutando tu compra. Nos encantaría saber cómo fue tu experiencia. ¿Podés calificarnos de 0 a 5 estrellas? También podés dejar un comentario, ¡tus opiniones nos ayudan a mejorar cada día! 💬⭐️`;
 
       try {
         await sendWhatsAppMessage(orderData.customer.phone, message);
