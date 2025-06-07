@@ -10,15 +10,15 @@ interface ReviewResponse {
   total_NPS: number;
 }
 
-// Función para calcular el NPS
-function calculateNPS(ratings: number[]): number {
+// Función para calcular el promedio de estrellas y convertirlo a porcentaje
+function calculateAverageRating(ratings: number[]): number {
   if (ratings.length === 0) return 0;
 
-  const promoters = ratings.filter(rating => rating >= 9).length;
-  const detractors = ratings.filter(rating => rating <= 6).length;
-  const total = ratings.length;
-
-  return ((promoters - detractors) / total) * 100;
+  // Calcular el promedio de estrellas (0-5)
+  const average = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
+  
+  // Convertir a porcentaje (5 estrellas = 100%, 0 estrellas = 0%)
+  return (average / 5) * 100;
 }
 
 // Endpoint para obtener todas las reviews
@@ -106,17 +106,17 @@ router.get('/reviews', async (req, res) => {
       };
     }).filter(review => review !== null) as ReviewWithRelations[];
 
-    // Calcular el NPS
+    // Calcular el promedio de estrellas
     const ratings = formattedReviews
       .filter(review => review.rating !== null)
       .map(review => review.rating);
     
-    const total_NPS = calculateNPS(ratings);
+    const averageRating = calculateAverageRating(ratings);
 
     // Construir la respuesta
     const response: ReviewResponse = {
       reviews: formattedReviews,
-      total_NPS
+      total_NPS: averageRating
     };
 
     return res.status(200).json(response);

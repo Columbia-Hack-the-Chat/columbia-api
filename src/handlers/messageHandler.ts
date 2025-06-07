@@ -15,8 +15,8 @@ function esRespuestaAPostEntrega(message: WAMessage): boolean {
 
 // Función para procesar el mensaje y extraer rating y comentario
 function processReviewMessage(message: string): { rating: number | null; comment: string | null } {
-    // Buscar números del 1 al 5 al inicio del mensaje
-    const ratingMatch = message.match(/^[1-5]/);
+    // Buscar números del 0 al 5 al inicio del mensaje
+    const ratingMatch = message.match(/^[0-5]/);
     const rating = ratingMatch ? parseInt(ratingMatch[0]) : null;
     
     // El comentario es el resto del mensaje, eliminando el rating si existe
