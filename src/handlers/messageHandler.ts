@@ -3,7 +3,7 @@ import { config } from '../config/index.js'
 import { generateResponse } from '../ai/openai.js'
 import { createLogger } from '../logger/index.js'
 import { supabase } from '../db/client.js'
-import { extraerComentarioYPuntaje } from '../ai/feedbackParser.js'
+import { extraerComentarioYPuntajeConIA } from '../ai/feedbackParser.js'
 
 
 const logger = createLogger('MessageHandler')
@@ -37,15 +37,13 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
             message.message?.conversation || message.message?.extendedTextMessage?.text || ''
         if (!textContent) return
 
-        const { comment, rating } = extraerComentarioYPuntaje(textContent.trim())
+  const { comment, rating } = await extraerComentarioYPuntajeConIA(textContent.trim());
 
-        logger.info('Message received', {
-            from: remoteJid,
-            text: textContent,
-            comment,
-            rating,
-            messageId: message.key.id
-        })
+  logger.info('Message analyzed by AI', {
+    originalText: textContent,
+    extractedComment: comment,
+    extractedRating: rating
+  });
 
         // IA solo si es una respuesta post entrega
         if (config.bot.aiEnabled && esRespuestaAPostEntrega(message)) {
