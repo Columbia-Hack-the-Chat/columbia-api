@@ -14,6 +14,7 @@ import { setCurrentQR } from './store/qrStore.js'
 import { createLogger } from './logger/index.js'
 import express from 'express';
 import orderWebhook from './handlers/orderWebhook';
+import reviewHandler from './handlers/reviewHandler';
 import dotenv from 'dotenv';
 
 const logger = createLogger('HackTheChat')
@@ -84,8 +85,6 @@ async function connectToWhatsApp() {
     })
 }
 
-
-
 dotenv.config();
 
 const app = express();
@@ -96,6 +95,7 @@ app.use(express.json());
 
 // Rutas
 app.use('/api', orderWebhook);
+app.use('/api', reviewHandler);
 
 // Ruta de health check
 app.get('/health', (req, res) => {

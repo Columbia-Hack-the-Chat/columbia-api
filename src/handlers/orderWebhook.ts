@@ -1,21 +1,12 @@
 import express from 'express';
-import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { getSocket } from '../socket/manager.js';
+import { supabase } from '../db/client.js';
+import { Customer, Order } from '../db/types.js';
 
 dotenv.config();
 
 const router = express.Router();
-
-// Inicializar cliente de Supabase
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error('Faltan las variables de entorno de Supabase');
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Interfaz para la estructura de la orden
 interface OrderData {
@@ -90,9 +81,10 @@ router.post('/webhook/order', async (req, res) => {
         {
           order_id: parseInt(orderData.orderId),
           customer_id: customerData.id,
-          skus: orderData.lineItems.map(item => item.sku),
+          product: orderData.lineItems.map(item => item.sku),
           total: orderData.total,
-          created_at: orderData.createdAt
+          created_at: orderData.createdAt,
+          review_status: 'pending'
         }
       ])
       .select()
