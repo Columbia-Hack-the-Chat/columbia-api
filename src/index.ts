@@ -12,6 +12,9 @@ import { startServer } from './server/index.js'
 import { setStatus } from './store/connectionStore.js'
 import { setCurrentQR } from './store/qrStore.js'
 import { createLogger } from './logger/index.js'
+import express from 'express';
+import orderWebhook from './handlers/orderWebhook';
+import dotenv from 'dotenv';
 
 const logger = createLogger('HackTheChat')
 
@@ -80,6 +83,29 @@ async function connectToWhatsApp() {
         }
     })
 }
+
+
+
+dotenv.config();
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Middleware para parsear JSON
+app.use(express.json());
+
+// Rutas
+app.use('/api', orderWebhook);
+
+// Ruta de health check
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
+// Iniciar el servidor
+app.listen(port, () => {
+  console.log(`Servidor webhook corriendo en el puerto ${port}`);
+});
 
 startServer()
 connectToWhatsApp().catch(err => {

@@ -1,17 +1,17 @@
 import { WASocket } from 'baileys'
 
-let currentSocket: WASocket | null = null
+let socket: WASocket | null = null
 
 export function setSocket(sock: WASocket | null) {
-    currentSocket = sock
+    socket = sock
 }
 
 export function getSocket(): WASocket | null {
-    return currentSocket
+    return socket
 }
 
 export async function disconnectSocket() {
-    if (currentSocket) {
-        await currentSocket.logout()
+    if (socket) {
+        await socket.logout()
     }
 }

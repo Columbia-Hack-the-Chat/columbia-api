@@ -61,15 +61,6 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
             return
         }
 
-        // Fallback to echo if AI is disabled
-        await sock.sendMessage(remoteJid, {
-            text: `Echo: ${textContent}`
-        })
-
-        logger.info('Echo response sent', {
-            to: remoteJid,
-            originalText: textContent
-        })
     } catch (error) {
         logger.error('Error handling message', error, {
             messageId: message.key.id,
