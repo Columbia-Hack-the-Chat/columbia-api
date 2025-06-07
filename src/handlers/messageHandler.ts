@@ -5,29 +5,79 @@ import { createLogger } from '../logger/index.js'
 import { supabase } from '../db/client.js'
 import { extraerComentarioYPuntajeConIA } from '../ai/feedbackParser.js'
 
-
 const logger = createLogger('MessageHandler')
+
+// Cache de conversaciones en memoria para mantener contexto
+interface ConversationContext {
+    customerPhone: string
+    lastMessageTime: number
+    messageCount: number
+    hasGreeted: boolean
+    hasAskedForRating: boolean
+    receivedRating: boolean
+    lastMessages: string[]
+}
+
+const conversationCache = new Map<string, ConversationContext>()
+
+// Timeout pendientes para evitar múltiples respuestas
+const pendingTimeouts = new Map<string, NodeJS.Timeout>()
 
 // Detecta si el mensaje es una respuesta posterior al mensaje de entrega
 function esRespuestaAPostEntrega(message: WAMessage): boolean {
     return !!message.message?.conversation || !!message.message?.extendedTextMessage
 }
 
-// Función para procesar el mensaje y extraer rating y comentario
-function processReviewMessage(message: string): { rating: number | null; comment: string | null } {
-    // Buscar números del 1 al 5 al inicio del mensaje
-    const ratingMatch = message.match(/^[1-5]/);
-    const rating = ratingMatch ? parseInt(ratingMatch[0]) : null;
+// Función para limpiar contextos antiguos (más de 24 horas)
+function cleanOldContexts() {
+    const now = Date.now()
+    const maxAge = 24 * 60 * 60 * 1000 // 24 horas
     
-    // El comentario es el resto del mensaje, eliminando el rating si existe
-    const comment = ratingMatch 
-        ? message.slice(ratingMatch[0].length).trim() 
-        : message.trim();
+    for (const [phone, context] of conversationCache.entries()) {
+        if (now - context.lastMessageTime > maxAge) {
+            conversationCache.delete(phone)
+        }
+    }
+}
 
-    return {
-        rating,
-        comment: comment || null
-    };
+// Ejecutar limpieza cada hora
+setInterval(cleanOldContexts, 60 * 60 * 1000)
+
+// Función para obtener o crear contexto de conversación
+function getOrCreateContext(customerPhone: string): ConversationContext {
+    let context = conversationCache.get(customerPhone)
+    
+    if (!context) {
+        context = {
+            customerPhone,
+            lastMessageTime: Date.now(),
+            messageCount: 0,
+            hasGreeted: false,
+            hasAskedForRating: false,
+            receivedRating: false,
+            lastMessages: []
+        }
+        conversationCache.set(customerPhone, context)
+    }
+    
+    return context
+}
+
+// Función para actualizar contexto después del mensaje
+function updateContext(context: ConversationContext, message: string, extractedRating: number | null) {
+    context.lastMessageTime = Date.now()
+    context.messageCount++
+    
+    // Mantener solo los últimos 3 mensajes para contexto
+    context.lastMessages.push(message)
+    if (context.lastMessages.length > 3) {
+        context.lastMessages.shift()
+    }
+    
+    // Detectar si ya recibió rating
+    if (extractedRating !== null) {
+        context.receivedRating = true
+    }
 }
 
 // Setup del handler de mensajes
@@ -54,6 +104,40 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
             message.message?.conversation || message.message?.extendedTextMessage?.text || ''
         if (!textContent) return
 
+        const customerPhone = remoteJid.replace('@s.whatsapp.net', '')
+
+        // Cancelar timeout anterior si existe
+        const existingTimeout = pendingTimeouts.get(customerPhone)
+        if (existingTimeout) {
+            clearTimeout(existingTimeout)
+            pendingTimeouts.delete(customerPhone)
+        }
+
+        // Crear nuevo timeout de 1 segundos
+        const timeout = setTimeout(async () => {
+            await processMessageWithDelay(sock, message, remoteJid, textContent, customerPhone)
+            pendingTimeouts.delete(customerPhone)
+        }, 1000)
+
+        pendingTimeouts.set(customerPhone, timeout)
+
+    } catch (error) {
+        logger.error('Error handling message', error, {
+            messageId: message.key.id,
+            from: message.key.remoteJid
+        })
+    }
+}
+
+// Procesar mensaje después del delay
+async function processMessageWithDelay(
+    sock: WASocket, 
+    message: WAMessage, 
+    remoteJid: string, 
+    textContent: string, 
+    customerPhone: string
+) {
+    try {
         const { comment, rating } = await extraerComentarioYPuntajeConIA(textContent.trim());
 
         logger.info('Message analyzed by AI', {
@@ -64,8 +148,6 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
 
         // IA solo si es una respuesta post entrega
         if (config.bot.aiEnabled && esRespuestaAPostEntrega(message)) {
-            const customerPhone = remoteJid.replace('@s.whatsapp.net', '')
-
             const { data: customer, error: customerError } = await supabase
                 .from('customers')
                 .select('id')
@@ -90,39 +172,36 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
                 return
             }
 
-            const prompt = textContent.trim()
+            // Obtener y actualizar contexto
+            const context = getOrCreateContext(customerPhone)
+            updateContext(context, textContent.trim(), rating)
 
-            const customPrompt = `
-
-            Sos parte del equipo de atención al cliente de un pequeño emprendimiento. 
-            Tu trabajo es responder de forma cálida, cercana y humana a los mensajes que dejan los clientes después de recibir su pedido.
-
-            No hablás como un robot. No uses frases genéricas como "gracias por tu mensaje". 
-            Mostrá gratitud real, validá lo que dicen y conversá con tono relajado, como si estuvieras en WhatsApp. 
-
-            Siempre que el cliente dé una opinión (positiva o negativa), pedile amablemente que la califique del 1 al 5. 
-            Si ya lo hizo, registralo mentalmente y agradecé.
-            Si no lo hizo, insistí una vez más de forma sutil pero clara, como: "¿Y si tuvieras que ponerle un puntaje del 1 al 5? 😄"
-
-            Usá emojis solo si el cliente los usó primero.
-
-            Tu estilo:
-            - Cercano y honesto, como si fueras parte real del equipo.
-            - Breve, cálido, directo.
-            - Nunca des respuestas genéricas ni largas.
-
-            mensaje del cliente: "${prompt}"
-            `
+            // Construir prompt con contexto
+            const contextualPrompt = buildContextualPrompt(textContent.trim(), context, comment, rating)
 
             try {
-                const aiReply = await generateResponse(customPrompt)
+                const aiReply = await generateResponse(contextualPrompt)
                 await sock.sendMessage(remoteJid, { text: aiReply })
+
+                // Actualizar contexto post-respuesta
+                if (!context.hasGreeted && aiReply.toLowerCase().includes('hola')) {
+                    context.hasGreeted = true
+                }
+                if (aiReply.includes('1 al 5') || aiReply.includes('calific')) {
+                    context.hasAskedForRating = true
+                }
 
                 logger.info('AI response sent', {
                     to: remoteJid,
-                    response: aiReply, comment, rating,
-                    comentarioDetectado: comment,
-                    puntuacionDetectada: rating,
+                    response: aiReply,
+                    comment,
+                    rating,
+                    contextInfo: {
+                        messageCount: context.messageCount,
+                        hasGreeted: context.hasGreeted,
+                        hasAskedForRating: context.hasAskedForRating,
+                        receivedRating: context.receivedRating
+                    }
                 })
 
                 // Solo guardar si hay rating o comentario
@@ -164,14 +243,49 @@ async function handleMessage(sock: WASocket, message: WAMessage) {
                     text: 'Hubo un error al generar la respuesta automática. Podés responder manualmente por ahora.'
                 })
             }
-            return
         }
 
-
     } catch (error) {
-        logger.error('Error handling message', error, {
-            messageId: message.key.id,
-            from: message.key.remoteJid
-        })
+        logger.error('Error processing delayed message', error)
     }
+}
+
+// Construir prompt contextual
+function buildContextualPrompt(
+    currentMessage: string, 
+    context: ConversationContext, 
+    comment: string, 
+    rating: number | null
+): string {
+    const basePrompt = `
+Sos parte del equipo de atención al cliente de un pequeño emprendimiento. 
+Tu trabajo es responder de forma cálida, cercana y humana a los mensajes que dejan los clientes después de recibir su pedido.
+
+CONTEXTO DE LA CONVERSACIÓN:
+- Es el mensaje número ${context.messageCount} de este cliente
+- ${context.hasGreeted ? 'YA saludaste antes' : 'Es la primera vez que hablas con este cliente'}
+- ${context.hasAskedForRating ? 'YA pediste calificación antes' : 'Aún no pediste calificación'}
+- ${context.receivedRating ? 'YA recibiste una calificación' : 'Aún no recibiste calificación'}
+- Mensajes anteriores: ${context.lastMessages.slice(-2).join(' | ')}
+
+REGLAS IMPORTANTES:
+- NO repitas saludos si ya saludaste antes
+- NO preguntes por calificación si ya la pediste o recibiste
+- Mantené continuidad conversacional natural
+- Si es el segundo mensaje o más, actúa como si ya estuvieras hablando
+
+EXTRAÍDO DEL MENSAJE:
+- Comentario: "${comment}"
+- Calificación detectada: ${rating || 'ninguna'}
+
+Tu estilo:
+- Cercano y honesto, como si fueras parte real del equipo
+- Breve, cálido, directo
+- Nunca genérico ni robotico
+- Responde como si fuera WhatsApp personal
+
+Mensaje actual del cliente: "${currentMessage}"
+`
+
+    return basePrompt
 }
