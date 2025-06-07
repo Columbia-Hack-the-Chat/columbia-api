@@ -21,7 +21,7 @@ export async function extraerComentarioYPuntajeConIA(text: string): Promise<{
   try {
     const systemPrompt = `
     Eres un analizador de feedback especializado. Tu única tarea es:
-    1. Identificar el puntaje REAL (1-5) que el cliente quiere dar
+    1. Identificar el puntaje REAL (0-5) que el cliente quiere dar
     2. Extraer el comentario principal
 
     Reglas estrictas:

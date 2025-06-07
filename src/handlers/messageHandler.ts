@@ -187,7 +187,7 @@ async function processMessageWithDelay(
                 if (!context.hasGreeted && aiReply.toLowerCase().includes('hola')) {
                     context.hasGreeted = true
                 }
-                if (aiReply.includes('1 al 5') || aiReply.includes('calific')) {
+                if (aiReply.includes('0 al 5') || aiReply.includes('calific')) {
                     context.hasAskedForRating = true
                 }
 
